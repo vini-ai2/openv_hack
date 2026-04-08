@@ -1,21 +1,26 @@
-# openv_hack
-Building a complete, real-world OpenEnv environment that an AI agent can learn from through the standard  step() / reset() / state()  API.
+---
+title: Property Valuation Agent
+emoji: 🏠
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_file: main.py
+pinned: false
+---
+
 # Real Estate Valuation Agent (OpenEnv)
 
-## Environment Description
-This environment simulates a real-world property appraisal task using the Ames Housing Dataset. Agents must analyze property features to provide accurate valuations.
+This environment simulates a real-world property appraisal task using the Ames Housing Dataset. It evaluates an AI agent's ability to perform financial analysis and asset valuation through a standardized API.
 
-## Action Space
-- `estimated_value` (float): The agent's predicted market price in USD.
+## 🚀 Quick Start
 
-## Observation Space
-- `task_id` (string): Current difficulty level.
-- `features` (dict): Property details including:
-    - `sqft`: Living area square footage.
-    - `beds`: Number of bedrooms.
-    - `year_built`: Original construction date.
+### 1. Prerequisites
+- Docker installed locally
+- Python 3.10+
+- Hugging Face Token (for Inference)
 
-## Tasks
-1. **Task 1 (Easy)**: Price Bracket Classification.
-2. **Task 2 (Medium)**: Direct Point Estimate Valuation.
-3. **Task 3 (Hard)**: Comparative Market Analysis reconciliation.
+### 2. Installation
+```bash
+git clone [https://huggingface.co/spaces/manasvini23/openenv_hack](https://huggingface.co/spaces/manasvini23/openenv_hack)
+cd openenv_hack
+pip install -r requirements.txt
