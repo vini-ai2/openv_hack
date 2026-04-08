@@ -31,7 +31,7 @@ async def run_inference(task_id):
             steps_taken = i
             
             # 2. LLM Call with cleaned prompt
-            prompt = f"House Data: {obs['features']}. Task: {task_id}. Provide a numeric price estimate."
+            prompt = f"Given these house PCA features: {obs['features'].get('pca_features')}, what is the price?"
             
             response = client.chat.completions.create(
                 model=MODEL_NAME,
@@ -74,3 +74,4 @@ if __name__ == "__main__":
     tasks = ["task_1_easy", "task_2_medium", "task_3_hard"]
     for t in tasks:
         asyncio.run(run_inference(t))
+        
