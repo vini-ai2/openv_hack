@@ -1,19 +1,18 @@
 import uvicorn
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from typing import Optional
 from models import Action, ResetRequest, StepResponse, Observation
 from my_env_v4 import MyEnvV4Env, MyEnvV4Action
 
 app = FastAPI()
 
-# Map openenv.yaml task IDs → internal task names
 TASK_ID_MAP = {
     "task_1_easy": "easy",
     "task_2_medium": "medium",
     "task_3_hard": "hard",
 }
 
-# 1. Load the environment
 try:
     env = MyEnvV4Env.from_csv("reduced_dataset.csv")
 except Exception as e:
@@ -25,29 +24,23 @@ async def health_check():
     return {"status": "running", "dataset_loaded": env is not None}
 
 @app.post("/reset")
-async def reset(req: ResetRequest):
+async def reset(req: Optional[ResetRequest] = None):
     if env is None:
         raise HTTPException(status_code=500, detail="Environment data not loaded")
 
     try:
-        # Map the grader's task_id (e.g. "task_1_easy") to internal name ("easy")
-        internal_task = TASK_ID_MAP.get(req.task_id)
-        if internal_task is None:
-            raise HTTPException(status_code=400, detail=f"Unknown task_id: {req.task_id}")
+        # Tolerate completely missing body — default to easy
+        task_id = (req.task_id if req and req.task_id else None) or "task_1_easy"
+        internal_task = TASK_ID_MAP.get(task_id, "easy")
 
-        # Set the correct task on the env before resetting
         env.task_idx = list(MyEnvV4Env.TASKS).index(internal_task)
         env._setup_task()
 
-        # Reset and get the first observation
         raw_v4_obs = await env.reset()
 
-        # Return observation WITHOUT true_price (don't leak the answer to the agent)
         formatted_obs = Observation(
-            task_id=req.task_id,
-            features={
-                "pca_features": raw_v4_obs.pca_features,
-            },
+            task_id=task_id,
+            features={"pca_features": raw_v4_obs.pca_features},
             step_count=0
         )
 
