@@ -1,0 +1,14 @@
+version: "1.0.0"
+metadata:
+  name: "property-valuation-agent"
+  description: "LLM-based agent for real estate estimation"
+tasks:
+  - id: "task_1_easy"
+    name: "Price Bracket Classification"
+    difficulty: "easy"
+  - id: "task_2_medium"
+    name: "Point Estimate Valuation"
+    difficulty: "medium"
+  - id: "task_3_hard"
+    name: "Comparable Property Selection"
+    difficulty: "hard"
