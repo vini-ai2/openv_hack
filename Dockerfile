@@ -1,18 +1,22 @@
 FROM python:3.10-slim
 
+# Create a non-root user for HF Spaces security
+RUN useradd -m -u 1000 user
+USER user
+ENV PATH="/home/user/.local/bin:$PATH"
+
 WORKDIR /app
 
-# Install dependencies first for caching
-COPY requirements.txt .
-# First upgrade pip, then install your requirements
+# Copy requirements and install
+COPY --chown=user requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the code
-COPY . .
+# Copy the rest of the files with correct ownership
+COPY --chown=user . .
 
-# Expose port 8000 for the FastAPI server
-EXPOSE 8000
+# Expose the HF default port
+EXPOSE 7860
 
-# Start the server (Person A's main.py)
+# Start the server
 CMD ["python", "main.py"]

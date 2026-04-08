@@ -9,8 +9,7 @@ from openai import OpenAI
 API_BASE_URL = "https://router.huggingface.co/openai/v1"
 API_KEY = os.getenv("HF_TOKEN") 
 MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.3" 
-ENV_URL = os.getenv("SPACE_URL", "http://localhost:8000")
-
+ENV_URL = os.getenv("SPACE_URL", "http://localhost:7860")
 client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
 def log_step(step, action, reward, done, error=None):
