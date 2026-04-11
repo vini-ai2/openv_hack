@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "property-valuation-agent"
+version = "1.0.0"
+description = "LLM-based agent for real estate property valuation"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "openai",
+    "requests",
+    "pandas",
+    "numpy",
+    "openenv-core",
+]
+
+[project.scripts]
+run-inference = "inference:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
