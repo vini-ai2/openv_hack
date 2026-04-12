@@ -14,7 +14,8 @@ class Observation(BaseModel):
 # 3. The response structure for the /step endpoint
 class StepResponse(BaseModel):
     observation: Observation
-    reward: float = Field(..., ge=0.0, le=1.0, description="Reward score between 0 and 1")
+    # gt/lt = strictly greater than / less than (not equal to 0.0 or 1.0)
+    reward: float = Field(..., gt=0.0, lt=1.0, description="Reward score strictly between 0 and 1")
     done: bool = Field(..., description="Whether the episode is finished")
     info: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
