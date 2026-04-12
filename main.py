@@ -19,6 +19,10 @@ except Exception as e:
     print(f"CRITICAL: Dataset load failed: {e}")
     env = None
 
+def clamp_reward(r: float) -> float:
+    """Ensure reward is strictly (0, 1) — grader rejects 0.0 and 1.0 exactly."""
+    return max(0.001, min(0.999, float(r)))
+
 @app.get("/")
 async def health_check():
     return {"status": "running", "dataset_loaded": env is not None}
@@ -29,7 +33,6 @@ async def reset(req: Optional[ResetRequest] = None):
         raise HTTPException(status_code=500, detail="Environment data not loaded")
 
     try:
-        # Tolerate completely missing body — default to easy
         task_id = (req.task_id if req and req.task_id else None) or "task_1_easy"
         internal_task = TASK_ID_MAP.get(task_id, "easy")
 
@@ -66,7 +69,7 @@ async def step(action: Action):
             features={"pca_features": obs.pca_features},
             step_count=env.idx
         ),
-        reward=reward,
+        reward=clamp_reward(reward),  # guaranteed strictly (0, 1)
         done=done,
         info=info
     )
