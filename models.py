@@ -1,20 +1,15 @@
-from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional
+from openenv.core.env_server.types import Action, Observation
+from pydantic import Field
+from typing import List, Optional, Dict, Any
 
-class Action(BaseModel):
-    estimated_value: float = Field(..., description="The agent's predicted price for the property")
 
-class Observation(BaseModel):
-    task_id: str = Field(..., description="The ID of the current task (easy/medium/hard)")
-    features: Dict[str, Any] = Field(..., description="Dictionary of property features")
+class PropertyAction(Action):
+    """Agent's predicted price for the property."""
+    estimated_value: float = Field(..., description="Predicted price")
+
+
+class PropertyObservation(Observation):
+    """What the environment returns to the agent."""
+    task_id: str = Field(default="task_1_easy")
+    pca_features: List[float] = Field(default_factory=list)
     step_count: int = Field(default=0)
-
-class StepResponse(BaseModel):
-    """Aligned with openenv StepResponse — no reward bounds so Pydantic never rejects."""
-    observation: Observation
-    reward: Optional[float] = Field(default=None, description="Reward signal from the action")
-    done: bool = Field(default=False)
-    info: Optional[Dict[str, Any]] = Field(default_factory=dict)
-
-class ResetRequest(BaseModel):
-    task_id: Optional[str] = Field(default="task_1_easy")

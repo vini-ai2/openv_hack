@@ -4,6 +4,9 @@ import pandas as pd
 from typing import List, Optional
 from pydantic import BaseModel
 
+# -------------------------
+# Pydantic Models for OpenEnv
+# -------------------------
 class MyEnvV4Observation(BaseModel):
     pca_features: List[float]
     true_price: float
@@ -15,27 +18,45 @@ class MyEnvV4Action(BaseModel):
 class MyEnvV4Reward(BaseModel):
     reward: float
 
+# -------------------------
+# Hackathon-ready Environment
+# -------------------------
 class MyEnvV4Env:
     TASKS = ["easy", "medium", "hard"]
 
     def __init__(self, data: pd.DataFrame):
+        """
+        data: PCA-reduced dataframe, last column must be 'SalePrice'
+        """
         self.data = data.copy()
         self.max_idx = len(self.data) - 1
-        self.task_idx = 0
+        self.task_idx = 0  # start with 'easy'
         self.idx = 0
-        # CRITICAL: Store the exact string the validator uses
-        self.active_external_id = "task_1_easy" 
         self._setup_task()
 
+    # -------------------------
+    # Setup feature subset per task
+    # -------------------------
     def _setup_task(self):
         self.task = MyEnvV4Env.TASKS[self.task_idx]
         if self.task == "easy":
             self.feature_cols = self.data.columns[:3]
         elif self.task == "medium":
             self.feature_cols = self.data.columns[:10]
-        else:
+        else:  # hard
             self.feature_cols = self.data.columns[:-1]
 
+    # -------------------------
+    # Switch to next task
+    # -------------------------
+    def next_task(self):
+        self.task_idx = (self.task_idx + 1) % len(MyEnvV4Env.TASKS)
+        self.idx = 0
+        self._setup_task()
+
+    # -------------------------
+    # Reset environment
+    # -------------------------
     async def reset(self) -> MyEnvV4Observation:
         self.idx = 0
         row = self.data.iloc[self.idx]
@@ -45,43 +66,51 @@ class MyEnvV4Env:
             task=self.task
         )
 
+    # -------------------------
+    # Step function
+    # -------------------------
     async def step(self, action: MyEnvV4Action):
         if self.idx > self.max_idx:
-            return MyEnvV4Observation(pca_features=[], true_price=0.0, task=self.task), 0.001, True, {"error": "Episode finished"}
+            # episode done
+            done = True
+            obs = MyEnvV4Observation(pca_features=[], true_price=0.0, task=self.task)
+            reward = 0.0
+            info = {"error": "Episode finished"}
+            return obs, reward, done, info
 
         row = self.data.iloc[self.idx]
-        true_p = float(row["SalePrice"])
-        
-        # Scenario: Avoid division by zero and perfect 1.0/0.0 scores
-        denom = true_p if true_p != 0 else 1e-9
-        raw_reward = 1 - abs(action.predicted_price - true_p) / denom
-        
-        # Use a hard clamp to stay strictly within (0, 1)
-        reward = float(np.clip(raw_reward, 0.001, 0.999))
-        
         obs = MyEnvV4Observation(
             pca_features=row[self.feature_cols].tolist(),
-            true_price=true_p,
+            true_price=float(row["SalePrice"]),
             task=self.task
         )
-        done = self.idx == self.max_idx
-        self.idx += 1
-        return obs, reward, done, {}
 
+        # Reward: inverse relative error
+        reward = max(0.0, 1 - abs(action.predicted_price - obs.true_price) / obs.true_price)
+        done = self.idx == self.max_idx
+        info = {}
+
+        self.idx += 1
+        return obs, reward, done, info
+
+    # -------------------------
+    # Return internal state
+    # -------------------------
+    def state(self):
+        return {"current_index": self.idx, "task": self.task, "task_idx": self.task_idx}
+
+    # -------------------------
+    # Grader for any task
+    # -------------------------
     @staticmethod
     def grade(predictions: List[float], true_prices: List[float]) -> float:
-        """The validator might use this method directly."""
-        if not predictions or not true_prices:
-            return 0.001
-            
-        rewards = []
-        for p, t in zip(predictions, true_prices):
-            denom = t if t != 0 else 1e-9
-            r = 1 - abs(p - t) / denom
-            rewards.append(np.clip(r, 0.001, 0.999))
-        
-        avg_score = float(np.mean(rewards))
-        # Final safety check for NaN or rounding to 1.0
-        if np.isnan(avg_score):
-            return 0.001
-        return float(np.clip(avg_score, 0.001, 0.999))
+        rewards = [max(0.0, 1 - abs(p - t) / t) for p, t in zip(predictions, true_prices)]
+        return float(np.mean(rewards))  # normalized 0-1 score
+
+    # -------------------------
+    # Load from CSV helper
+    # -------------------------
+    @classmethod
+    def from_csv(cls, csv_path: str):
+        df = pd.read_csv(csv_path)
+        return cls(df)
