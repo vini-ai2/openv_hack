@@ -1,3 +1,4 @@
+# main.py
 import uvicorn
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -16,63 +17,46 @@ TASK_ID_MAP = {
 try:
     env = MyEnvV4Env.from_csv("reduced_dataset.csv")
 except Exception as e:
-    print(f"CRITICAL: Dataset load failed: {e}")
     env = None
-
-def clamp_reward(r: float) -> float:
-    """Ensure reward is strictly (0, 1) — grader rejects 0.0 and 1.0 exactly."""
-    return max(0.001, min(0.999, float(r)))
-
-@app.get("/")
-async def health_check():
-    return {"status": "running", "dataset_loaded": env is not None}
 
 @app.post("/reset")
 async def reset(req: Optional[ResetRequest] = None):
     if env is None:
-        raise HTTPException(status_code=500, detail="Environment data not loaded")
+        raise HTTPException(status_code=500, detail="Dataset not loaded")
 
     try:
-        task_id = (req.task_id if req and req.task_id else None) or "task_1_easy"
-        internal_task = TASK_ID_MAP.get(task_id, "easy")
-
+        # Preserve the EXACT string sent by the validator
+        ext_task_id = (req.task_id if req and req.task_id else "task_1_easy")
+        env.active_external_id = ext_task_id
+        
+        internal_task = TASK_ID_MAP.get(ext_task_id, "easy")
         env.task_idx = list(MyEnvV4Env.TASKS).index(internal_task)
         env._setup_task()
 
         raw_v4_obs = await env.reset()
-
-        formatted_obs = Observation(
-            task_id=task_id,
-            features={"pca_features": raw_v4_obs.pca_features},
-            step_count=0
-        )
-
-        return {"observation": formatted_obs.dict()}
-
-    except HTTPException:
-        raise
+        return {
+            "observation": {
+                "task_id": ext_task_id, # Must match exactly
+                "features": {"pca_features": raw_v4_obs.pca_features},
+                "step_count": 0
+            }
+        }
     except Exception as e:
-        print(f"RESET ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/step", response_model=StepResponse)
 async def step(action: Action):
-    if not env:
-        raise HTTPException(status_code=500, detail="Environment not initialized")
-
     v4_action = MyEnvV4Action(predicted_price=action.estimated_value)
     obs, reward, done, info = await env.step(v4_action)
 
+    # env.step already clamps the reward to (0.001, 0.999)
     return StepResponse(
         observation=Observation(
-            task_id=MyEnvV4Env.TASKS[env.task_idx],
+            task_id=env.active_external_id, # Persistent ID
             features={"pca_features": obs.pca_features},
             step_count=env.idx
         ),
-        reward=clamp_reward(reward),  # guaranteed strictly (0, 1)
+        reward=reward, 
         done=done,
         info=info
     )
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=7860)
