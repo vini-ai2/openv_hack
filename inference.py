@@ -5,11 +5,12 @@ import requests
 import re
 from openai import OpenAI
 
-ENV_URL = os.getenv("SPACE_URL", "http://localhost:7860")
+# The grader injects SPACE_URL pointing to the live HF Space
+# Fall back to localhost only for local testing
+ENV_URL = os.getenv("SPACE_URL", "http://localhost:7860").rstrip("/")
 
-# LiteLLM proxies commonly alias models — try common names in order
 MODEL_CANDIDATES = [
-    os.getenv("MODEL_NAME", ""),          # honour explicit override if set
+    os.getenv("MODEL_NAME", ""),
     "mistralai/Mistral-7B-Instruct-v0.3",
     "mistral",
     "gpt-3.5-turbo",
@@ -23,11 +24,11 @@ def get_client():
         raise RuntimeError("API_BASE_URL environment variable is not set!")
     if not api_key:
         raise RuntimeError("API_KEY environment variable is not set!")
-    print(f"[CONFIG] API_BASE_URL={api_base}", flush=True)
+    print(f"[CONFIG] API_BASE_URL={api_base} ENV_URL={ENV_URL}", flush=True)
     return OpenAI(base_url=api_base, api_key=api_key)
 
-def call_llm(client, prompt: str) -> float:
-    """Try each model candidate until one works; return predicted price."""
+def call_llm(client, features) -> float:
+    prompt = f"Given these house PCA features: {features}, predict the sale price in USD."
     last_error = None
     for model in MODEL_CANDIDATES:
         if not model:
@@ -50,25 +51,32 @@ def call_llm(client, prompt: str) -> float:
             print(f"[LLM] model={model} failed: {e}", flush=True)
             last_error = e
 
-    # All candidates failed — use a reasonable fallback so the episode still runs
-    print(f"[LLM] All models failed, using fallback price. Last error: {last_error}", flush=True)
+    print(f"[LLM] All models failed: {last_error}", flush=True)
     return 150000.0
 
-def log_step(step, action, reward, done, error=None):
-    print(f"[STEP] step={step} action={json.dumps(action)} reward={reward} done={done} error={error}", flush=True)
+def extract_features(obs: dict):
+    """Handle both old format (obs.features.pca_features) and new (obs.pca_features)."""
+    # New openenv format: pca_features directly on observation
+    if "pca_features" in obs:
+        return obs["pca_features"]
+    # Old format: nested under features
+    if "features" in obs and obs["features"]:
+        return obs["features"].get("pca_features")
+    return []
 
 async def run_inference(task_id: str):
-    print(f"[START] task={task_id}", flush=True)
+    print(f"[START] task={task_id} env={ENV_URL}", flush=True)
     client = get_client()
 
     try:
-        # 1. Reset
         res = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
         res.raise_for_status()
-        obs = res.json()["observation"]
+        body = res.json()
+        # create_app wraps in {observation: {...}, reward: ..., done: ...}
+        obs = body.get("observation", body)
     except Exception as e:
         print(f"[ERROR] Reset failed for {task_id}: {e}", flush=True)
-        return  # skip this task, don't crash the whole run
+        return
 
     total_reward = 0.0
     steps_taken  = 0
@@ -76,24 +84,27 @@ async def run_inference(task_id: str):
     for i in range(1, 6):
         steps_taken = i
         try:
-            prompt = f"Given these house PCA features: {obs['features'].get('pca_features')}, what is the price?"
-            pred_val = call_llm(client, prompt)
+            features = extract_features(obs)
+            pred_val = call_llm(client, features)
 
             action   = {"estimated_value": pred_val}
-            step_res = requests.post(f"{ENV_URL}/step", json=action, timeout=30).json()
-            reward   = step_res.get("reward", 0.001)
-            done     = step_res.get("done", True)
-            obs      = step_res.get("observation", obs)
+            step_res = requests.post(f"{ENV_URL}/step",
+                                     json={"action": action},   # create_app wraps action in {"action": ...}
+                                     timeout=30).json()
 
-            total_reward += reward
-            log_step(step=i, action=action, reward=reward, done=done)
+            reward = step_res.get("reward") or 0.001
+            done   = step_res.get("done", True)
+            obs    = step_res.get("observation", obs)
+
+            total_reward += float(reward)
+            print(f"[STEP] step={i} action={json.dumps(action)} reward={reward} done={done}", flush=True)
 
             if done:
                 break
 
         except Exception as e:
             print(f"[ERROR] Step {i} failed: {e}", flush=True)
-            break  # stop this episode but don't crash
+            break
 
     print(f"[END] task={task_id} success={total_reward >= 0.8} steps={steps_taken} score={total_reward}", flush=True)
 
