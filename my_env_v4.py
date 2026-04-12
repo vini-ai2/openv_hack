@@ -74,7 +74,7 @@ class MyEnvV4Env:
             # episode done
             done = True
             obs = MyEnvV4Observation(pca_features=[], true_price=0.0, task=self.task)
-            reward = 0.0
+            reward = 0.001  # strictly > 0
             info = {"error": "Episode finished"}
             return obs, reward, done, info
 
@@ -86,7 +86,8 @@ class MyEnvV4Env:
         )
 
         # Reward: inverse relative error
-        reward = max(0.0, 1 - abs(action.predicted_price - obs.true_price) / obs.true_price)
+        raw_reward = 1 - abs(action.predicted_price - obs.true_price) / obs.true_price
+        reward = max(0.001, min(0.999, raw_reward))
         done = self.idx == self.max_idx
         info = {}
 
@@ -104,7 +105,7 @@ class MyEnvV4Env:
     # -------------------------
     @staticmethod
     def grade(predictions: List[float], true_prices: List[float]) -> float:
-        rewards = [max(0.0, 1 - abs(p - t) / t) for p, t in zip(predictions, true_prices)]
+        rewards = [max(0.001, min(0.999, 1 - abs(p - t) / t)) for p, t in zip(predictions, true_prices)]
         return float(np.mean(rewards))  # normalized 0-1 score
 
     # -------------------------
